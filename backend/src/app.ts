@@ -1,0 +1,27 @@
+import express from 'express';
+import cors from 'cors';
+import { z } from 'zod';
+import { config } from './config.js';
+import { asyncHandler, errorHandler, AppError } from './errors.js';
+import { Conversation, Order, Product, Store } from './models.js';
+import { changeStatus, clarify, confirm, receiveImage, receiveMessage } from './services.js';
+import { whatsappRouter } from './whatsapp/routes.js';
+
+const ok = (res: any, data: unknown, message = '') => res.json({ success: true, data, message });
+export const app = express();
+app.use(cors({ origin: config.frontendOrigins })); app.use(express.json({ limit: '8mb' }));
+app.use('/api', whatsappRouter);
+app.get('/api/health', (_req, res) => ok(res, { status: 'ok' }));
+app.get('/api/stores/slug/:slug', asyncHandler(async (req, res) => { const store = await Store.findOne({ slug: req.params.slug, isActive: true }); if (!store) throw new AppError(404, 'Store not found'); ok(res, store); }));
+app.get('/api/stores/:storeId', asyncHandler(async (req, res) => { const store = await Store.findById(req.params.storeId); if (!store) throw new AppError(404, 'Store not found'); ok(res, store); }));
+app.get('/api/stores/:storeId/products', asyncHandler(async (req, res) => ok(res, await Product.find({ storeId: req.params.storeId, isAvailable: true }).sort({ category: 1, name: 1 }))));
+app.get('/api/stores/:storeId/products/search', asyncHandler(async (req, res) => { const q = String(req.query.q || '').slice(0, 80); ok(res, await Product.find({ storeId: req.params.storeId, isAvailable: true, $or: [{ name: { $regex: q, $options: 'i' } }, { aliases: { $regex: q, $options: 'i' } }] }).limit(20)); }));
+app.post('/api/chat/message', asyncHandler(async (req, res) => { const body = z.object({ sessionId: z.string().min(4).max(100), storeId: z.string(), customerName: z.string().max(80).optional(), customerPhone: z.string().max(20).optional(), message: z.string().min(1).max(1000) }).parse(req.body); ok(res, await receiveMessage(body)); }));
+app.post('/api/chat/image', asyncHandler(async (req, res) => { const body = z.object({ sessionId: z.string().min(4).max(100), storeId: z.string(), customerName: z.string().max(80).optional(), customerPhone: z.string().max(20).optional(), imageDataUrl: z.string().max(7_000_000).refine(value => /^data:image\/(jpeg|png|webp);base64,/.test(value), 'Only JPEG, PNG, or WebP images are allowed') }).parse(req.body); ok(res, await receiveImage(body)); }));
+app.post('/api/chat/clarify', asyncHandler(async (req, res) => { const body = z.object({ sessionId: z.string(), productId: z.string() }).parse(req.body); ok(res, await clarify(body.sessionId, body.productId)); }));
+app.post('/api/chat/confirm', asyncHandler(async (req, res) => { const body = z.object({ sessionId: z.string() }).parse(req.body); ok(res, await confirm(body.sessionId)); }));
+app.get('/api/chat/session/:sessionId', asyncHandler(async (req, res) => { const c: any = await Conversation.findOne({ sessionId: req.params.sessionId }); if (!c) throw new AppError(404, 'Session not found'); const order = c.orderId ? await Order.findById(c.orderId) : null; ok(res, { state: c.state, language: c.preferredLanguage, order }); }));
+app.get('/api/orders/:orderId', asyncHandler(async (req, res) => { const order = await Order.findById(req.params.orderId).populate('customerId', 'name phone'); if (!order) throw new AppError(404, 'Order not found'); ok(res, order); }));
+app.get('/api/stores/:storeId/orders', asyncHandler(async (req, res) => ok(res, await Order.find({ storeId: req.params.storeId }).populate('customerId', 'name phone').sort({ createdAt: -1 }))));
+app.patch('/api/orders/:orderId/status', asyncHandler(async (req, res) => { const { status } = z.object({ status: z.enum(['ACCEPTED', 'REJECTED']) }).parse(req.body); ok(res, await changeStatus(String(req.params.orderId), status)); }));
+app.use((_req, _res, next) => next(new AppError(404, 'Route not found'))); app.use(errorHandler);

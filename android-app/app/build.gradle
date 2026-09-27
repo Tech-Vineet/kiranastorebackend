@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.kiranasaathi.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.kiranasaathi.app'
+        minSdk 24
+        targetSdk 35
+        versionCode 2
+        versionName '1.0.1'
+        buildConfigField 'String', 'KIRANA_APP_URL', '"' + (project.findProperty('KIRANA_APP_URL') ?: 'http://10.0.2.2:3000/store/sharma-kirana') + '"'
+    }
+
+    buildFeatures { buildConfig true }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}

@@ -1,0 +1,5 @@
+.cameraButton{width:46px;height:46px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--green);background:#edf6f1;cursor:pointer}
+.cameraButton input{display:none}
+.cameraButton.disabled{opacity:.45;pointer-events:none}
+.cameraButton svg{width:21px}
+.listPhoto{display:block;width:100%;max-width:260px;max-height:280px;object-fit:cover;border-radius:11px;margin-bottom:8px}
